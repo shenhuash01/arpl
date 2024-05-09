@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -eo pipefail
 
 ###############################################################################
 function export-vars() {
@@ -18,12 +18,16 @@ function export-vars() {
   export ARCH=x86_64
   export CC="x86_64-pc-linux-gnu-gcc"
   export LD="x86_64-pc-linux-gnu-ld"
-  export PATH="/opt/${1}/bin:${PATH}"
+  echo "export PATH=\"/opt/${1}/bin:${PATH}\"" | \
+    sudo tee /etc/profile.d/path.sh >/dev/null
+  sudo chmod +x /etc/profile.d/path.sh
 }
 
 ###############################################################################
 function shell() {
-  cp /opt/${2}/build/System.map /input
+  cp -fv /opt/${2}/build/.config /opt/${2}/source/
+  cp -fv /opt/${2}/build/System.map /opt/${2}/source/
+  cp -fv /opt/${2}/build/Module.symvers /opt/${2}/source/
   export-vars $2
   shift 2
   bash -l $@
@@ -52,11 +56,10 @@ function compile-module {
   cp -R /input /tmp
   export-vars ${PLATFORM}
   PARMS="${PLATFORM^^}-Y=y ${PLATFORM^^}-M=m"
-  if [ -f "/tmp/input/defines" ]
-  then
-    PARMS+=" `cat "/tmp/input/defines" | xargs`"
+  if [ -f "/tmp/input/defines.${1}" ]; then
+    PARMS+=" `cat "/tmp/input/defines.${1}" | xargs`"
   fi
-  make -C "/opt/${PLATFORM}/build" M="/tmp/input" ${PARMS} modules
+  make -j`nproc` -C "/opt/${PLATFORM}/build" M="/tmp/input" ${PARMS} modules
   while read F; do
     strip -g "${F}"
     echo "Copying `basename ${F}`"

@@ -18,9 +18,6 @@ printf "\033[1;44m%*s\033[0m\n" ${COLUMNS} ""
 TITLE="BOOTING..."
 printf "\033[1;33m%*s\033[0m\n" $(((${#TITLE}+${COLUMNS})/2)) "${TITLE}"
 
-history -w
-sync
-
 # Check if DSM zImage changed, patch it if necessary
 ZIMAGE_HASH="`readConfigKey "zimage-hash" "${USER_CONFIG_FILE}"`"
 if [ "`sha256sum "${ORI_ZIMAGE_FILE}" | awk '{print$1}'`" != "${ZIMAGE_HASH}" ]; then
@@ -29,7 +26,7 @@ if [ "`sha256sum "${ORI_ZIMAGE_FILE}" | awk '{print$1}'`" != "${ZIMAGE_HASH}" ];
   if [ $? -ne 0 ]; then
     dialog --backtitle "`backtitle`" --title "Error" \
       --msgbox "zImage not patched:\n`<"${LOG_FILE}"`" 12 70
-    return 1
+    exit 1
   fi
 fi
 
@@ -41,7 +38,7 @@ if [ "`sha256sum "${ORI_RDGZ_FILE}" | awk '{print$1}'`" != "${RAMDISK_HASH}" ]; 
   if [ $? -ne 0 ]; then
     dialog --backtitle "`backtitle`" --title "Error" \
       --msgbox "Ramdisk not patched:\n`<"${LOG_FILE}"`" 12 70
-    return 1
+    exit 1
   fi
 fi
 
@@ -68,10 +65,10 @@ CMDLINE['pid']="${PID}"
 CMDLINE['sn']="${SN}"
 
 # Read cmdline
-while IFS="=" read KEY VALUE; do
+while IFS=': ' read KEY VALUE; do
   [ -n "${KEY}" ] && CMDLINE["${KEY}"]="${VALUE}"
 done < <(readModelMap "${MODEL}" "builds.${BUILD}.cmdline")
-while IFS="=" read KEY VALUE; do
+while IFS=': ' read KEY VALUE; do
   [ -n "${KEY}" ] && CMDLINE["${KEY}"]="${VALUE}"
 done < <(readConfigMap "cmdline" "${USER_CONFIG_FILE}")
 
@@ -103,7 +100,7 @@ fi
 # Prepare command line
 CMDLINE_LINE=""
 grep -q "force_junior" /proc/cmdline && CMDLINE_LINE+="force_junior "
-[ ${EFI} -eq 1 ] && CMDLINE_LINE+="withefi "
+[ ${EFI} -eq 1 ] && CMDLINE_LINE+="withefi " || CMDLINE_LINE+="noefi "
 [ "${BUS}" = "ata" ] && CMDLINE_LINE+="synoboot_satadom=${DOM} dom_szmax=${SIZE} "
 CMDLINE_DIRECT="${CMDLINE_LINE}"
 CMDLINE_LINE+="console=ttyS0,115200n8 earlyprintk earlycon=uart8250,io,0x3f8,115200n8 root=/dev/md0 loglevel=15 log_buf_len=32M"
@@ -115,7 +112,7 @@ for KEY in ${!CMDLINE[@]}; do
   [ -n "${VALUE}" ] && CMDLINE_DIRECT+="=${VALUE}"
 done
 # Escape special chars
-CMDLINE_LINE=`echo ${CMDLINE_LINE} | sed 's/>/\\\\>/g'`
+#CMDLINE_LINE=`echo ${CMDLINE_LINE} | sed 's/>/\\\\>/g'`
 CMDLINE_DIRECT=`echo ${CMDLINE_DIRECT} | sed 's/>/\\\\>/g'`
 echo -e "Cmdline:\n\033[1;36m${CMDLINE_LINE}\033[0m"
 
@@ -142,8 +139,7 @@ if [ "${DIRECT}" = "true" ]; then
   echo -e "\033[1;33mReboot to boot directly in DSM\033[0m"
   grub-editenv ${GRUB_PATH}/grubenv set next_entry="direct"
   reboot
-  sleep 100
-  exit
+  exit 0
 fi
 echo -e "\033[1;37mLoading DSM kernel...\033[0m"
 
@@ -156,4 +152,4 @@ else
 fi
 echo -e "\033[1;37mBooting...\033[0m"
 poweroff
-while true; do sleep 1; done # infinity loop
+exit 0
